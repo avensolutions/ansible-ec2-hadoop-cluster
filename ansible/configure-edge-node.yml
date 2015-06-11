@@ -24,12 +24,6 @@
   gather_facts: False
   
   tasks:
-   
-  - name: Create hostname entry to {{ clustername }}EDGENODE
-    lineinfile: dest=/etc/hostname state=present create=yes regexp='.*' line="{{ lookup('env', 'HDPCLUSTERNAME') }}_EDGENODE"
-
-  - name: Set hostname
-    lineinfile: dest=/etc/sysconfig/network create=yes state=present regexp='HOSTNAME=.*' line="HOSTNAME={{ lookup('env', 'HDPCLUSTERNAME') }}_EDGENODE"
 
   # Install and Start Ambari Server       
     
@@ -45,12 +39,14 @@
     service: name=ambari-server state=restarted   
 
   # Install and Start Hue       
-    
-#  - name: Install Hue
-#    yum:
-#      pkg: hue
-#      state: installed
+  - name: Create remote HDP repo
+    shell: wget -nv http://public-repo-1.hortonworks.com/HDP/centos6/2.x/updates/2.2.6.0/hdp.repo -O /etc/yum.repos.d/hdp.repo
+  
+  - name: Install Hue
+    yum:
+      pkg: hue
+      state: installed
       
   - debug: msg="Ambari Server available at http://{{ inventory_hostname }}:8080"
 
-#  - debug: msg="Hue Server available at http://{{ inventory_hostname }}:8000"  
+  - debug: msg="Hue Server available at http://{{ inventory_hostname }}:8000"  
