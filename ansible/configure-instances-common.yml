@@ -73,8 +73,11 @@
   - name: Install Oracle JDK
     shell: rpm -Uvh --force /opt/jdk-7-linux-x64.rpm
  
+  - name: Write out alternatives file
+    template: src=../templates/java_alternatives.j2 dest=/tmp/java_alternatives.sh
+ 
   - name: Setting alternatives
-    shell: {{ java_alternatives }}
+    shell: /tmp/java_alternatives.sh
   
   - name: Remove previous links for jps
     shell: rm -f /usr/bin/jps  
