@@ -77,7 +77,7 @@
     template: src=../templates/java_alternatives.j2 dest=/tmp/java_alternatives.sh
  
   - name: Setting alternatives
-    shell: /tmp/java_alternatives.sh
+    shell: sh /tmp/java_alternatives.sh
   
   - name: Remove previous links for jps
     shell: rm -f /usr/bin/jps  
