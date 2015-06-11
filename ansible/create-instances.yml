@@ -42,11 +42,11 @@
 # Create Security Groups
 #       
     
-  - name: Create the Ambari security group for the HDP Cluster
+  - name: Create the Edge Node security group for the HDP Cluster
     local_action:
      module: ec2_group
-     name: ambari_sg
-     description: HDP Ambari Security Group
+     name: edgenode_sg
+     description: HDP Edge Node Security Group
      purge_rules: False
      purge_rules_egress: False
      vpc_id: "{{ vpc.vpc_id }}"
@@ -78,6 +78,19 @@
         from_port: 50000
         to_port: 50100
         cidr_ip: 0.0.0.0/0
+# Required for Hue
+      - proto: tcp
+        from_port: 8000
+        to_port: 8000
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 8088
+        to_port: 8088
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 19888
+        to_port: 19888
+        cidr_ip: 0.0.0.0/0        
 # Required for WANDISCO
       - proto: tcp
         from_port: 8082
@@ -95,7 +108,7 @@
         from_port: 4321
         to_port: 4321
         cidr_ip: 0.0.0.0/0
-    register: ambari_sg
+    register: edgenode_sg
 
   - name: Create the Hadoop security group for the HDP Cluster
     local_action:
@@ -118,42 +131,16 @@
         to_port: 8042
         cidr_ip: 0.0.0.0/0        
       - proto: all
-        group_name: ambari_sg
+        group_name: edgenode_sg
       - proto: all
         cidr_ip: 10.0.1.0/24
     register: hadoop_sg
 
-  - name: Create the Hue/YARN UI security group for the HDP Cluster
-    local_action:
-     module: ec2_group
-     name: hue_sg
-     description: HDP Hue Security Group
-     purge_rules: False
-     purge_rules_egress: False
-     vpc_id: "{{ vpc.vpc_id }}"
-     region: "{{ region }}"
-     aws_access_key: "{{ access_key }}"
-     aws_secret_key: "{{ secret_key }}"
-     rules:
-      - proto: tcp
-        from_port: 8000
-        to_port: 8000
-        cidr_ip: 0.0.0.0/0
-      - proto: tcp
-        from_port: 8088
-        to_port: 8088
-        cidr_ip: 0.0.0.0/0
-      - proto: tcp
-        from_port: 19888
-        to_port: 19888
-        cidr_ip: 0.0.0.0/0        
-    register: hue_sg
-
-  - name: Create the NameNode/HBase Master UI security group for the HDP Cluster
+  - name: Create the Master Node security group for the HDP Cluster
     local_action:
      module: ec2_group
      name: nn_sg
-     description: HDP NameNode Security Group
+     description: HDP Master Node Security Group
      purge_rules: False
      purge_rules_egress: False
      vpc_id: "{{ vpc.vpc_id }}"
@@ -171,11 +158,11 @@
         cidr_ip: 0.0.0.0/0
     register: nn_sg    
     
-  - name: Update Ambari Security Group
+  - name: Update Edge Node Security Group
     local_action:
      module: ec2_group
-     name: ambari_sg
-     description: HDP Ambari Security Group
+     name: edgenode_sg
+     description: HDP Edge Node Security Group
      purge_rules: False
      purge_rules_egress: False
      vpc_id: "{{ vpc.vpc_id }}"
@@ -202,7 +189,7 @@
      aws_secret_key: "{{ secret_key }}"
      region: "{{ region }}"
      key_name: "{{ pemkey }}"
-     group_id: "{{ ambari_sg.group_id }}"
+     group_id: "{{ edgenode_sg.group_id }}"
      instance_type: "{{ edgenode_instancetype }}"
      image: "{{ imageid }}"
      vpc_subnet_id: "{{ vpc.subnets[0].id }}"

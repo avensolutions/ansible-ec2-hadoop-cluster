@@ -46,6 +46,9 @@
     yum:
       pkg: hue
       state: installed
+
+  - name: Start Hue
+    service: name=hue state=restarted   
       
   - debug: msg="Ambari Server available at http://{{ inventory_hostname }}:8080"
 
