@@ -1,0 +1,96 @@
+---
+###
+#
+# configure-instances-common.yml
+# Written by: Jeffrey Aven
+#             Aven Solutions Pty Ltd
+#             http://avensolutions.com
+#
+# Common configuration for all Hadoop instances
+#
+###
+- hosts: all
+  connection: local
+
+  tasks:
+  - name: Wait for SSH to be available on Inventory Hosts
+    local_action: wait_for host={{ inventory_hostname }} port=22
+
+    
+- hosts: all
+  user: ec2-user
+  sudo: True
+  vars_files:
+  - "variables.yml"
+  gather_facts: False
+  
+  tasks:
+  - name: Copying PEM File to Instance
+    copy: src="~/{{ pemkey }}.pem" dest="/home/ec2-user/{{ pemkey }}.pem" owner=ec2-user mode=0400
+    
+  - name: Adding SSH Identity
+    lineinfile: dest=/etc/ssh/ssh_config insertafter=EOF line="Host *\n\tIdentityFile /home/ec2-user/{{ pemkey }}.pem"
+    
+  - name: Copying hosts file to instance
+    copy: src="~/.ansible/local_inventory/hdp.hosts" dest=/etc/hosts  
+
+  - name: Create hostname in /etc/hostname
+    lineinfile: dest=/etc/hostname state=present create=yes regexp='.*' line="{{ internalhostname }}"
+
+  - name: Set hostname in /etc/sysconfig/network
+    lineinfile: dest=/etc/sysconfig/network create=yes state=present regexp='HOSTNAME=.*' line="HOSTNAME={{ internalhostname }}"
+
+  - name: Set hostname
+    shell: hostname {{ internalhostname }}  
+    
+  - name: Stop iptables
+    service: name=iptables state=stopped
+
+  - name: Stop iptables6
+    service: name=ip6tables state=stopped
+    
+  - name: Disabling SELinux
+    lineinfile: dest=/etc/sysconfig/selinux regexp=^SELINUX= line=SELINUX=disabled
+
+  - name: Disable SElinux permanently
+    lineinfile: dest=/etc/selinux/config state=present create=no regexp='SELINUX=.*' line='SELINUX=disabled'
+
+  - name: Install NTP
+    yum:
+      pkg: ntp
+      state: installed
+  
+  - name: Start NTP
+    service: name=ntpd state=restarted
+    
+  - name: Set networking yes
+    lineinfile: dest=/etc/sysconfig/network create=yes state=present regexp='NETWORKING=.*' line='NETWORKING=yes'
+
+  # Install Oracle JDK
+  - name: Download Oracle JDK
+    shell: "wget --no-cookies --no-check-certificate --header 'Cookie: oraclelicense=accept-securebackup-cookie' '{{ oracle_jdk_download }}' -O /opt/jdk-7-linux-x64.rpm"
+
+  - name: Install Oracle JDK
+    shell: rpm -Uvh --force /opt/jdk-7-linux-x64.rpm
+ 
+  - name: Setting alternatives
+    shell: {{ java_alternatives }}
+  
+  - name: Remove previous links for jps
+    shell: rm -f /usr/bin/jps  
+  
+  - name: Set jps in path
+    shell: ln -s `sudo find / -name jps | grep jdk` /usr/bin/jps  
+
+  # Download/Install Ambari Repo and Agent    
+    
+  - name: Create Ambari Repo
+    get_url: url={{ hdp_ambari_repo }} dest=/etc/yum.repos.d/ambari.repo
+    
+  - name: Install Ambari agent
+    yum:
+      pkg: ambari-agent
+      state: installed
+
+  - name: Start Ambari agent
+    service: name=ambari-agent state=restarted  

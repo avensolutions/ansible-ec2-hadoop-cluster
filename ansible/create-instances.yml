@@ -1,0 +1,311 @@
+---
+###
+#
+# create-instances.yml
+# Written by: Jeffrey Aven
+#             Aven Solutions Pty Ltd
+#             http://avensolutions.com
+#
+# Creates:
+#   VPC, Subnets, Route Tables, Internet Gateway
+#   Security Groups and Specified Hadoop and Edge Node Instances
+#
+###
+
+- hosts: localhost
+  connection: local
+  vars_files:
+  - "variables.yml"
+  gather_facts: False
+  
+  tasks:
+#
+# Create VPC
+#   
+  - name: Create the VPC 
+    local_action:
+      module: ec2_vpc
+      state: present
+      region: "{{ region }}"
+      ec2_access_key: "{{ access_key }}"
+      ec2_secret_key: "{{ secret_key }}"
+      cidr_block: "{{ vpc_cidr_block }}"
+## TODO Change
+      resource_tags: { "Name":"CFS HDP VPC" }
+      subnets: "{{ vpc_subnets }}"
+      internet_gateway: "{{ vpc_internet_gateway|string }}"
+      route_tables: "{{ vpc_route_tables }}"    
+      wait: true
+    register: vpc
+    
+#
+# Create Security Groups
+#       
+    
+  - name: Create the Ambari security group for the HDP Cluster
+    local_action:
+     module: ec2_group
+     name: ambari_sg
+     description: HDP Ambari Security Group
+     purge_rules: False
+     purge_rules_egress: False
+     vpc_id: "{{ vpc.vpc_id }}"
+     region: "{{ region }}"
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     rules:
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 8080
+        to_port: 8080
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 8787
+        to_port: 8787
+        cidr_ip: 0.0.0.0/0        
+      - proto: tcp
+        from_port: 7180
+        to_port: 7180
+        cidr_ip: 0.0.0.0/0   
+      - proto: tcp
+        from_port: 50000
+        to_port: 50100
+        cidr_ip: 0.0.0.0/0
+# Required for WANDISCO
+      - proto: tcp
+        from_port: 8082
+        to_port: 8083
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 7000
+        to_port: 7100
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 6444
+        to_port: 6444
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 4321
+        to_port: 4321
+        cidr_ip: 0.0.0.0/0
+    register: ambari_sg
+
+  - name: Create the Hadoop security group for the HDP Cluster
+    local_action:
+     module: ec2_group
+     name: hadoop_sg
+     description: HDP Hadoop Security Group
+     purge_rules: False
+     purge_rules_egress: False
+     vpc_id: "{{ vpc.vpc_id }}"
+     region: "{{ region }}"
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     rules:
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 8042
+        to_port: 8042
+        cidr_ip: 0.0.0.0/0        
+      - proto: all
+        group_name: ambari_sg
+      - proto: all
+        cidr_ip: 10.0.1.0/24
+    register: hadoop_sg
+
+  - name: Create the Hue/YARN UI security group for the HDP Cluster
+    local_action:
+     module: ec2_group
+     name: hue_sg
+     description: HDP Hue Security Group
+     purge_rules: False
+     purge_rules_egress: False
+     vpc_id: "{{ vpc.vpc_id }}"
+     region: "{{ region }}"
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     rules:
+      - proto: tcp
+        from_port: 8000
+        to_port: 8000
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 8088
+        to_port: 8088
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 19888
+        to_port: 19888
+        cidr_ip: 0.0.0.0/0        
+    register: hue_sg
+
+  - name: Create the NameNode/HBase Master UI security group for the HDP Cluster
+    local_action:
+     module: ec2_group
+     name: nn_sg
+     description: HDP NameNode Security Group
+     purge_rules: False
+     purge_rules_egress: False
+     vpc_id: "{{ vpc.vpc_id }}"
+     region: "{{ region }}"
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     rules:
+      - proto: tcp
+        from_port: 50070
+        to_port: 50070
+        cidr_ip: 0.0.0.0/0
+      - proto: tcp
+        from_port: 60010
+        to_port: 60010
+        cidr_ip: 0.0.0.0/0
+    register: nn_sg    
+    
+  - name: Update Ambari Security Group
+    local_action:
+     module: ec2_group
+     name: ambari_sg
+     description: HDP Ambari Security Group
+     purge_rules: False
+     purge_rules_egress: False
+     vpc_id: "{{ vpc.vpc_id }}"
+     region: "{{ region }}"
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     rules:
+      - proto: all
+        group_name: hadoop_sg    
+
+#
+# Create Edge Node        
+#
+  - name: Creating local_inventory directory if it does not exist 
+    file: path=~/.ansible/local_inventory state=directory
+
+  - name: Initialize hdp.hosts file
+    shell: echo "127.0.0.1\tlocalhost" > ~/.ansible/local_inventory/hdp.hosts 
+      
+  - name: Create the EC2 Instance for the Edge Node
+    local_action:
+     module: ec2
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     region: "{{ region }}"
+     key_name: "{{ pemkey }}"
+     group_id: "{{ ambari_sg.group_id }}"
+     instance_type: "{{ edgenode_instancetype }}"
+     image: "{{ imageid }}"
+     vpc_subnet_id: "{{ vpc.subnets[0].id }}"
+     assign_public_ip: yes  
+     wait: yes
+     monitoring: yes
+     volumes:
+      - device_name: /dev/sda1
+        volume_size: "{{ root_ebs_size }}"
+     instance_tags:
+      Name: "{{ clustername }}EDGENODE"
+    register: ec2_edgenode
+
+  - name: Adding host to edgenode_instance inventory file
+    shell: echo "{{ ec2_edgenode.instances[0].public_dns_name }}\tansible_ssh_private_key_file=~/{{ pemkey }}.pem\tansible_ssh_user=ec2-user\tinternalhostname={{ clustername }}EDGENODE" > ~/.ansible/local_inventory/edgenode_instance        
+    
+  - name: Add edge node to hdp.hosts file
+    shell: echo "{{ ec2_edgenode.instances[0].private_ip }}\t{{ clustername }}EDGENODE" >> ~/.ansible/local_inventory/hdp.hosts
+    
+#
+# Create Master Nodes
+#    
+
+  - name: Create the EC2 Instances for the Master Nodes
+    local_action:
+     module: ec2
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     region: "{{ region }}"
+     key_name: "{{ pemkey }}"
+     group_id: ["{{ hadoop_sg.group_id }}","{{ nn_sg.group_id }}"]
+     instance_type: "{{ hdpmaster_instancetype }}"
+     image: "{{ imageid }}"
+     vpc_subnet_id: "{{ vpc.subnets[0].id }}"
+     assign_public_ip: yes  
+     wait: yes
+     monitoring: yes
+     volumes:
+      - device_name: /dev/sda1
+        volume_size: "{{ root_ebs_size }}"
+     instance_tags:
+      Name: "{{ clustername }}MASTER{{ item }}"
+    register: ec2_masters
+    with_sequence: count=2
+   
+  - name: Remove masternode_instances file
+    shell: rm -f ~/.ansible/local_inventory/masternode_instances 
+    
+  - name: Adding hosts to custom inventory       
+    shell: echo "{{ item.instances[0].public_dns_name }}\tansible_ssh_private_key_file=~/{{ pemkey }}.pem\tansible_ssh_user=ec2-user" >> ~/.ansible/local_inventory/masternode_instances
+    with_items: "{{ ec2_masters.results }}" 
+    
+  - name: Adding hostnames to inventory
+    shell: cd ~/.ansible/local_inventory;awk '{ print $0 "\tinternalhostname={{ clustername }}MASTER" FNR }' masternode_instances > masternode_instances.tmp && mv masternode_instances.tmp masternode_instances
+
+  - name: Add master nodes to hdp.hosts file
+    shell: echo "{{ item.1.instances[0].private_ip }}\t{{ clustername }}MASTER{{ item.0 + 1 }}" >> ~/.ansible/local_inventory/hdp.hosts
+    with_indexed_items: "{{ ec2_masters.results }}"    
+
+#
+# Create Slave Nodes
+#       
+
+  - name: Create the EC2 Instances for the Slave Nodes
+    local_action:
+     module: ec2
+     aws_access_key: "{{ access_key }}"
+     aws_secret_key: "{{ secret_key }}"
+     region: "{{ region }}"
+     key_name: "{{ pemkey }}"
+     group_id: "{{ hadoop_sg.group_id }}"
+     instance_type: "{{ hdpslave_instancetype }}"
+     image: "{{ imageid }}"
+     vpc_subnet_id: "{{ vpc.subnets[0].id }}"
+     assign_public_ip: yes  
+     wait: yes
+     monitoring: yes
+     volumes:
+      - device_name: /dev/sda1
+        volume_size: "{{ root_ebs_size }}"
+     instance_tags:
+      Name: "{{ clustername }}SLAVE{{ item }}"
+    register: ec2_slaves
+    with_sequence: count={{ number_of_nodes }}
+    
+  - name: Remove slavenode_instances file
+    shell: rm -f ~/.ansible/local_inventory/slavenode_instances 
+    
+  - name: Adding hosts to custom inventory       
+    shell: echo "{{ item.instances[0].public_dns_name }}\tansible_ssh_private_key_file=~/{{ pemkey }}.pem\tansible_ssh_user=ec2-user" >> ~/.ansible/local_inventory/slavenode_instances
+    with_items: "{{ ec2_slaves.results }}" 
+    
+  - name: Adding hostnames to inventory
+    shell: cd ~/.ansible/local_inventory;awk '{ print $0 "\tinternalhostname={{ clustername }}SLAVE" FNR }' slavenode_instances > slavenode_instances.tmp && mv slavenode_instances.tmp slavenode_instances
+
+  - name: Add slave nodes to hdp.hosts file
+    shell: echo "{{ item.1.instances[0].private_ip }}\t{{ clustername }}SLAVE{{ item.0 + 1 }}" >> ~/.ansible/local_inventory/hdp.hosts
+    with_indexed_items: "{{ ec2_slaves.results }}"    
+
+# Creating Global Inventory    
+    
+  - name: Remove global inventory file (all_instances)
+    shell: rm -f ~/.ansible/local_inventory/all_instances 
+    
+  - name: Creating global inventory file (all_instances)
+    shell: cd ~/.ansible/local_inventory;cat edgenode_instance masternode_instances slavenode_instances > all_instances

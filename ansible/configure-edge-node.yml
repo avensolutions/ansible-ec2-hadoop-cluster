@@ -1,0 +1,56 @@
+---
+###
+#
+# configure-edge-node.yml
+# Written by: Jeffrey Aven
+#             Aven Solutions Pty Ltd
+#             http://avensolutions.com
+#
+# Installs:
+#   Ambari Server on edgenode instance
+#   Hue Server on edgenode instance
+#
+# After running Ansible playbook, go to:
+# http://<ec2-public-dns-for-edge-node-instance>:8080
+# login using admin/admin
+# provision cluster with desired services and configuration
+#
+###
+- hosts: all
+  user: ec2-user
+  sudo: True
+  vars_files:
+  - "variables.yml"
+  gather_facts: False
+  
+  tasks:
+   
+  - name: Create hostname entry to {{ clustername }}EDGENODE
+    lineinfile: dest=/etc/hostname state=present create=yes regexp='.*' line="{{ lookup('env', 'HDPCLUSTERNAME') }}_EDGENODE"
+
+  - name: Set hostname
+    lineinfile: dest=/etc/sysconfig/network create=yes state=present regexp='HOSTNAME=.*' line="HOSTNAME={{ lookup('env', 'HDPCLUSTERNAME') }}_EDGENODE"
+
+  # Install and Start Ambari Server       
+    
+  - name: Install Ambari server
+    yum:
+      pkg: ambari-server
+      state: installed
+
+  - name: Configure Ambari server
+    command: ambari-server setup -s
+
+  - name: Start Ambari server
+    service: name=ambari-server state=restarted   
+
+  # Install and Start Hue       
+    
+#  - name: Install Hue
+#    yum:
+#      pkg: hue
+#      state: installed
+      
+  - debug: msg="Ambari Server available at http://{{ inventory_hostname }}:8080"
+
+#  - debug: msg="Hue Server available at http://{{ inventory_hostname }}:8000"  
